@@ -5,43 +5,41 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Random Key</title>
 <style>
-  body {
-    background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%);
-    height: 100vh; margin: 0; overflow: hidden;
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%; overflow: hidden;
+    background: radial-gradient(ellipse at bottom, #0b1220 0%, #02040a 100%);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     color: #fff; font-family: monospace;
   }
   #key {
-    font-size: 1.5rem; padding: 1rem 2rem; border: 2px solid #00f5ff; border-radius: 10px;
-    background: rgba(0,0,0,0.4); box-shadow: 0 0 15px #00f5ff; word-break: break-all;
+    font-size: 1.6rem; padding: 1rem 2rem; border: 2px solid #00f5ff;
+    border-radius: 10px; background: rgba(0,0,0,0.5);
+    box-shadow: 0 0 20px #00f5ff; word-break: break-all; z-index: 10;
   }
   button {
-    margin-top: 1rem; padding: 0.5rem 1rem; border: none; border-radius: 8px;
-    background: #00f5ff; color: #000; font-weight: bold; cursor: pointer;
-    transition: 0.3s;
+    margin-top: 1rem; padding: 0.6rem 1.2rem; border: none;
+    border-radius: 8px; background: #00f5ff; color: #000; font-weight: bold;
+    cursor: pointer; transition: 0.3s; z-index: 10;
   }
   button:hover { background: #00ffffaa; }
-
-  /* Hiệu ứng sao rơi */
-  .star {
-    position: absolute;
-    width: 2px; height: 2px; background: white;
-    top: 0; animation: fall linear infinite;
-    opacity: 0.8;
-  }
-  @keyframes fall {
-    from { transform: translateY(0) translateX(0); opacity: 1; }
-    to { transform: translateY(100vh) translateX(-200px); opacity: 0; }
+  canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 0;
   }
 </style>
 </head>
 <body>
-  <div id="key">Đang tạo key...</div>
-  <button id="copyBtn" style="display:none;">Copy Key</button>
+<canvas id="stars"></canvas>
+<div id="key">Đang tạo key...</div>
+<button id="copyBtn" style="display:none;">Copy Key</button>
 
 <script>
+/* ========== MockAPI + logic key ========== */
 const MOCKAPI = 'https://6887692e071f195ca980a354.mockapi.io/Key';
-const H24 = 24 * 60 * 60 * 1000; // 24 giờ
+const H24 = 24 * 60 * 60 * 1000;
 
 function genKey(len = 32) {
   const arr = new Uint8Array(len/2);
@@ -53,7 +51,7 @@ async function getIp() {
   try {
     const r = await fetch('https://checkip.com.vn/', {mode:'cors'});
     const t = await r.text();
-    const m = t.match(/((?:\d{1,3}\.){3}\d{1,3})|([0-9a-fA-F:]{2,})/);
+    const m = t.match(/((?:\\d{1,3}\\.){3}\\d{1,3})|([0-9a-fA-F:]{2,})/);
     if (m) return m[1] || m[2];
   } catch {}
   const r2 = await fetch('https://api.ipify.org?format=json');
@@ -74,31 +72,81 @@ async function deleteExpiredKeys() {
     const keys = await res.json();
     const now = Date.now();
     for (const k of keys) {
-      if (Date.now() - new Date(k.createdAt).getTime() > H24) {
+      if (now - new Date(k.createdAt).getTime() > H24) {
         await fetch(`${MOCKAPI}/${k.id}`, { method: 'DELETE' });
         console.log('Đã xoá key hết hạn:', k.key);
       }
     }
   } catch (e) {
-    console.warn('Không thể kiểm tra/xoá key:', e);
+    console.warn('Không thể xoá key:', e);
   }
 }
 
-/* Sao rơi */
-function createStar() {
-  const star = document.createElement('div');
-  star.classList.add('star');
-  document.body.appendChild(star);
-  star.style.left = Math.random()*window.innerWidth + 'px';
-  star.style.animationDuration = (Math.random()*3+2)+'s';
-  star.style.animationDelay = Math.random()*2+'s';
-  setTimeout(()=>star.remove(),5000);
-}
-setInterval(createStar, 150);
+/* ========== Sao rơi có bật nảy ========== */
+const canvas = document.getElementById('stars');
+const ctx = canvas.getContext('2d');
+let stars = [];
+const colors = ['#00f5ff', '#ff1493', '#ffd700', '#7fff00', '#ff4500', '#8a2be2'];
+let W, H;
 
-/* Main */
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+class Star {
+  constructor() {
+    this.reset(true);
+  }
+  reset(initial = false) {
+    this.x = Math.random() * W;
+    this.y = initial ? Math.random() * H : -20;
+    this.vx = (Math.random() - 0.5) * 2;
+    this.vy = Math.random() * 2 + 1;
+    this.color = colors[Math.floor(Math.random()*colors.length)];
+    this.size = Math.random() * 16 + 8;
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    // gravity
+    this.vy += 0.03;
+    // va vào cạnh => bật nảy
+    if (this.x <= 0 || this.x >= W) this.vx *= -1;
+    if (this.y >= H - this.size) {
+      this.vy *= -0.8;
+      this.y = H - this.size;
+      if (Math.abs(this.vy) < 0.5) this.reset();
+    }
+    if (this.y < -50) this.reset();
+  }
+  draw() {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.fillStyle = this.color;
+    ctx.font = `${this.size}px Arial`;
+    ctx.fillText('★', 0, 0);
+    ctx.restore();
+  }
+}
+
+for (let i = 0; i < 250; i++) stars.push(new Star());
+
+function animate() {
+  ctx.clearRect(0, 0, W, H);
+  for (let s of stars) {
+    s.update();
+    s.draw();
+  }
+  requestAnimationFrame(animate);
+}
+animate();
+
+/* ========== Main ========== */
 (async () => {
-  await deleteExpiredKeys(); // Kiểm tra và xoá key cũ trước
+  await deleteExpiredKeys();
   const key = genKey();
   document.getElementById('key').textContent = key;
   document.getElementById('copyBtn').style.display = 'inline-block';
