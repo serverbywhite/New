@@ -1,75 +1,105 @@
 <!doctype html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Send random key</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Random Key</title>
+<style>
+  body {
+    background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%);
+    height: 100vh; margin: 0; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #fff; font-family: monospace;
+  }
+  #key {
+    font-size: 1.5rem; padding: 1rem 2rem; border: 2px solid #00f5ff; border-radius: 10px;
+    background: rgba(0,0,0,0.4); box-shadow: 0 0 15px #00f5ff; word-break: break-all;
+  }
+  button {
+    margin-top: 1rem; padding: 0.5rem 1rem; border: none; border-radius: 8px;
+    background: #00f5ff; color: #000; font-weight: bold; cursor: pointer;
+    transition: 0.3s;
+  }
+  button:hover { background: #00ffffaa; }
+
+  /* Hiệu ứng sao rơi */
+  .star {
+    position: absolute;
+    width: 2px; height: 2px; background: white;
+    top: 0; animation: fall linear infinite;
+    opacity: 0.8;
+  }
+  @keyframes fall {
+    from { transform: translateY(0) translateX(0); opacity: 1; }
+    to { transform: translateY(100vh) translateX(-200px); opacity: 0; }
+  }
+</style>
 </head>
 <body>
-  <pre id="log"></pre>
+  <div id="key">Đang tạo key...</div>
+  <button id="copyBtn" style="display:none;">Copy Key</button>
+
 <script>
 const MOCKAPI = 'https://6887692e071f195ca980a354.mockapi.io/Key';
-const log = msg => { document.getElementById('log').textContent += msg + '\\n'; }
 
-/* Tạo key ngẫu nhiên (32 hex) */
+/* Sinh key ngẫu nhiên */
 function genKey(len = 32) {
   const arr = new Uint8Array(len/2);
   crypto.getRandomValues(arr);
   return Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
-/* Đọc IP từ checkip.com.vn bằng fetch và regex. Nếu bị CORS hoặc parse fail sẽ dùng ipify làm fallback. */
+/* Lấy IP, fallback nếu bị CORS */
 async function getIp() {
   try {
-    const r = await fetch('https://checkip.com.vn/', { method: 'GET', mode: 'cors' });
-    const text = await r.text();
-    // tìm IPv4/IPv6 trong HTML trả về
-    const m = text.match(/((?:\\d{1,3}\\.){3}\\d{1,3})|([0-9a-fA-F:]{2,})/);
-    if (m) {
-      // chọn phần chứa IPv4 nếu có, ngược lại phần chứa IPv6
-      const ip = m[1] || m[2];
-      if (ip) return ip;
-    }
-    throw new Error('No IP found in checkip.com.vn response');
-  } catch (e) {
-    log('checkip.com.vn failed: ' + e.message + ' — fallback to api.ipify.org');
-    try {
-      const r2 = await fetch('https://api.ipify.org?format=json');
-      const j = await r2.json();
-      return j.ip;
-    } catch (e2) {
-      throw new Error('Fallback ipify failed: ' + e2.message);
-    }
-  }
+    const r = await fetch('https://checkip.com.vn/', {mode:'cors'});
+    const t = await r.text();
+    const m = t.match(/((?:\d{1,3}\.){3}\d{1,3})|([0-9a-fA-F:]{2,})/);
+    if (m) return m[1] || m[2];
+  } catch {}
+  const r2 = await fetch('https://api.ipify.org?format=json');
+  return (await r2.json()).ip;
 }
 
-/* Gửi POST tới MockAPI */
+/* Gửi lên MockAPI */
 async function sendKeyRecord(key, ip) {
-  const payload = { key, ip, createdAt: new Date().toISOString() };
-  const r = await fetch(MOCKAPI, {
+  return fetch(MOCKAPI, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    mode: 'cors'
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ key, ip, createdAt: new Date().toISOString() })
   });
-  if (!r.ok) throw new Error('POST failed: ' + r.status + ' ' + r.statusText);
-  return r.json();
 }
+
+/* Sao rơi ngẫu nhiên */
+function createStar() {
+  const star = document.createElement('div');
+  star.classList.add('star');
+  document.body.appendChild(star);
+  star.style.left = Math.random()*window.innerWidth + 'px';
+  star.style.animationDuration = (Math.random()*3+2)+'s';
+  star.style.animationDelay = Math.random()*2+'s';
+  setTimeout(()=>star.remove(),5000);
+}
+setInterval(createStar, 150);
 
 /* Main */
 (async () => {
-  try {
-    const key = genKey(32);
-    log('Generated key: ' + key);
-    const ip = await getIp();
-    log('Detected IP: ' + ip);
-    const res = await sendKeyRecord(key, ip);
-    log('Saved to MockAPI. Response:');
-    log(JSON.stringify(res, null, 2));
-  } catch (err) {
-    log('Error: ' + err.message);
-  }
+  const key = genKey();
+  document.getElementById('key').textContent = key;
+  document.getElementById('copyBtn').style.display = 'inline-block';
+  const ip = await getIp();
+  await sendKeyRecord(key, ip);
 })();
+
+/* Copy */
+document.getElementById('copyBtn').onclick = async () => {
+  const keyText = document.getElementById('key').textContent;
+  await navigator.clipboard.writeText(keyText);
+  const btn = document.getElementById('copyBtn');
+  const old = btn.textContent;
+  btn.textContent = 'Đã copy!';
+  setTimeout(()=>btn.textContent = old, 1500);
+};
 </script>
 </body>
 </html>
