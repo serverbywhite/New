@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Random Key</title>
+<title>Random Key Galaxy</title>
 <style>
   html, body {
     margin: 0; padding: 0;
     height: 100%; overflow: hidden;
-    background: radial-gradient(ellipse at bottom, #0b1220 0%, #02040a 100%);
+    background: #000;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     color: #fff; font-family: monospace;
   }
@@ -23,21 +23,24 @@
     cursor: pointer; transition: 0.3s; z-index: 10;
   }
   button:hover { background: #00ffffaa; }
-  canvas {
+  #galaxy, #stars {
     position: fixed;
     top: 0; left: 0;
     width: 100vw; height: 100vh;
     z-index: 0;
   }
+  #stars { z-index: 1; pointer-events: none; }
 </style>
 </head>
 <body>
+<canvas id="galaxy"></canvas>
 <canvas id="stars"></canvas>
 <div id="key">Đang tạo key...</div>
 <button id="copyBtn" style="display:none;">Copy Key</button>
 
+<script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
 <script>
-/* ========== MockAPI + logic key ========== */
+/* ========== MockAPI logic ========== */
 const MOCKAPI = 'https://6887692e071f195ca980a354.mockapi.io/Key';
 const H24 = 24 * 60 * 60 * 1000;
 
@@ -77,74 +80,98 @@ async function deleteExpiredKeys() {
         console.log('Đã xoá key hết hạn:', k.key);
       }
     }
-  } catch (e) {
-    console.warn('Không thể xoá key:', e);
-  }
+  } catch (e) { console.warn('Không thể xoá key:', e); }
 }
 
-/* ========== Sao rơi có bật nảy ========== */
-const canvas = document.getElementById('stars');
-const ctx = canvas.getContext('2d');
+/* ========== Galaxy 3D bằng Three.js ========== */
+const galaxyCanvas = document.getElementById('galaxy');
+const renderer = new THREE.WebGLRenderer({canvas: galaxyCanvas, antialias: true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
+camera.position.z = 400;
+
+const geometry = new THREE.BufferGeometry();
+const count = 5000;
+const positions = new Float32Array(count * 3);
+const colors = new Float32Array(count * 3);
+
+for (let i = 0; i < count; i++) {
+  const r = Math.random() * 400 + 100;
+  const theta = Math.random() * 2 * Math.PI;
+  const phi = Math.random() * Math.PI;
+  positions[i*3] = r * Math.sin(phi) * Math.cos(theta);
+  positions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+  positions[i*3+2] = r * Math.cos(phi);
+  const color = new THREE.Color(`hsl(${Math.random()*360}, 100%, 70%)`);
+  colors[i*3] = color.r;
+  colors[i*3+1] = color.g;
+  colors[i*3+2] = color.b;
+}
+
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+const material = new THREE.PointsMaterial({ size: 2, vertexColors: true, transparent: true });
+const points = new THREE.Points(geometry, material);
+scene.add(points);
+
+function animateGalaxy() {
+  requestAnimationFrame(animateGalaxy);
+  points.rotation.y += 0.0009;
+  points.rotation.x += 0.0004;
+  renderer.render(scene, camera);
+}
+animateGalaxy();
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+/* ========== Sao "★" rơi bật nảy ========== */
+const starCanvas = document.getElementById('stars');
+const ctx = starCanvas.getContext('2d');
 let stars = [];
-const colors = ['#00f5ff', '#ff1493', '#ffd700', '#7fff00', '#ff4500', '#8a2be2'];
-let W, H;
+const colors2 = ['#00f5ff','#ff1493','#ffd700','#7fff00','#ff4500','#8a2be2'];
+let W,H;
 
-function resize() {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
+function resize2() {
+  W = starCanvas.width = window.innerWidth;
+  H = starCanvas.height = window.innerHeight;
 }
-window.addEventListener('resize', resize);
-resize();
+window.addEventListener('resize', resize2);
+resize2();
 
 class Star {
-  constructor() {
-    this.reset(true);
-  }
-  reset(initial = false) {
-    this.x = Math.random() * W;
-    this.y = initial ? Math.random() * H : -20;
-    this.vx = (Math.random() - 0.5) * 2;
-    this.vy = Math.random() * 2 + 1;
-    this.color = colors[Math.floor(Math.random()*colors.length)];
-    this.size = Math.random() * 16 + 8;
+  constructor() { this.reset(true); }
+  reset(init=false) {
+    this.x = Math.random()*W;
+    this.y = init ? Math.random()*H : -20;
+    this.vx = (Math.random()-0.5)*2;
+    this.vy = Math.random()*2+1;
+    this.color = colors2[Math.floor(Math.random()*colors2.length)];
+    this.size = Math.random()*16+8;
   }
   update() {
-    this.x += this.vx;
-    this.y += this.vy;
-    // gravity
-    this.vy += 0.03;
-    // va vào cạnh => bật nảy
-    if (this.x <= 0 || this.x >= W) this.vx *= -1;
-    if (this.y >= H - this.size) {
-      this.vy *= -0.8;
-      this.y = H - this.size;
-      if (Math.abs(this.vy) < 0.5) this.reset();
-    }
-    if (this.y < -50) this.reset();
+    this.x += this.vx; this.y += this.vy; this.vy += 0.03;
+    if (this.x<=0||this.x>=W) this.vx*=-1;
+    if (this.y>=H-this.size){this.vy*=-0.8;this.y=H-this.size;if(Math.abs(this.vy)<0.5)this.reset();}
   }
   draw() {
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.fillStyle = this.color;
-    ctx.font = `${this.size}px Arial`;
-    ctx.fillText('★', 0, 0);
-    ctx.restore();
+    ctx.save(); ctx.translate(this.x,this.y); ctx.fillStyle=this.color; ctx.font=`${this.size}px Arial`; ctx.fillText('★',0,0); ctx.restore();
   }
 }
-
-for (let i = 0; i < 250; i++) stars.push(new Star());
-
-function animate() {
-  ctx.clearRect(0, 0, W, H);
-  for (let s of stars) {
-    s.update();
-    s.draw();
-  }
-  requestAnimationFrame(animate);
+for(let i=0;i<250;i++) stars.push(new Star());
+function animateStars(){
+  ctx.clearRect(0,0,W,H);
+  for(const s of stars){s.update();s.draw();}
+  requestAnimationFrame(animateStars);
 }
-animate();
+animateStars();
 
-/* ========== Main ========== */
+/* ========== Main logic key ========== */
 (async () => {
   await deleteExpiredKeys();
   const key = genKey();
