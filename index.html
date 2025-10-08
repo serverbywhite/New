@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Send random key</title>
+</head>
+<body>
+  <pre id="log"></pre>
+<script>
+const MOCKAPI = 'https://6887692e071f195ca980a354.mockapi.io/Key';
+const log = msg => { document.getElementById('log').textContent += msg + '\\n'; }
+
+/* Tạo key ngẫu nhiên (32 hex) */
+function genKey(len = 32) {
+  const arr = new Uint8Array(len/2);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+/* Đọc IP từ checkip.com.vn bằng fetch và regex. Nếu bị CORS hoặc parse fail sẽ dùng ipify làm fallback. */
+async function getIp() {
+  try {
+    const r = await fetch('https://checkip.com.vn/', { method: 'GET', mode: 'cors' });
+    const text = await r.text();
+    // tìm IPv4/IPv6 trong HTML trả về
+    const m = text.match(/((?:\\d{1,3}\\.){3}\\d{1,3})|([0-9a-fA-F:]{2,})/);
+    if (m) {
+      // chọn phần chứa IPv4 nếu có, ngược lại phần chứa IPv6
+      const ip = m[1] || m[2];
+      if (ip) return ip;
+    }
+    throw new Error('No IP found in checkip.com.vn response');
+  } catch (e) {
+    log('checkip.com.vn failed: ' + e.message + ' — fallback to api.ipify.org');
+    try {
+      const r2 = await fetch('https://api.ipify.org?format=json');
+      const j = await r2.json();
+      return j.ip;
+    } catch (e2) {
+      throw new Error('Fallback ipify failed: ' + e2.message);
+    }
+  }
+}
+
+/* Gửi POST tới MockAPI */
+async function sendKeyRecord(key, ip) {
+  const payload = { key, ip, createdAt: new Date().toISOString() };
+  const r = await fetch(MOCKAPI, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    mode: 'cors'
+  });
+  if (!r.ok) throw new Error('POST failed: ' + r.status + ' ' + r.statusText);
+  return r.json();
+}
+
+/* Main */
+(async () => {
+  try {
+    const key = genKey(32);
+    log('Generated key: ' + key);
+    const ip = await getIp();
+    log('Detected IP: ' + ip);
+    const res = await sendKeyRecord(key, ip);
+    log('Saved to MockAPI. Response:');
+    log(JSON.stringify(res, null, 2));
+  } catch (err) {
+    log('Error: ' + err.message);
+  }
+})();
+</script>
+</body>
+</html>
