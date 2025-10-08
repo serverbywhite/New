@@ -41,15 +41,14 @@
 
 <script>
 const MOCKAPI = 'https://6887692e071f195ca980a354.mockapi.io/Key';
+const H24 = 24 * 60 * 60 * 1000; // 24 giờ
 
-/* Sinh key ngẫu nhiên */
 function genKey(len = 32) {
   const arr = new Uint8Array(len/2);
   crypto.getRandomValues(arr);
   return Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
-/* Lấy IP, fallback nếu bị CORS */
 async function getIp() {
   try {
     const r = await fetch('https://checkip.com.vn/', {mode:'cors'});
@@ -61,7 +60,6 @@ async function getIp() {
   return (await r2.json()).ip;
 }
 
-/* Gửi lên MockAPI */
 async function sendKeyRecord(key, ip) {
   return fetch(MOCKAPI, {
     method: 'POST',
@@ -70,7 +68,23 @@ async function sendKeyRecord(key, ip) {
   });
 }
 
-/* Sao rơi ngẫu nhiên */
+async function deleteExpiredKeys() {
+  try {
+    const res = await fetch(MOCKAPI);
+    const keys = await res.json();
+    const now = Date.now();
+    for (const k of keys) {
+      if (Date.now() - new Date(k.createdAt).getTime() > H24) {
+        await fetch(`${MOCKAPI}/${k.id}`, { method: 'DELETE' });
+        console.log('Đã xoá key hết hạn:', k.key);
+      }
+    }
+  } catch (e) {
+    console.warn('Không thể kiểm tra/xoá key:', e);
+  }
+}
+
+/* Sao rơi */
 function createStar() {
   const star = document.createElement('div');
   star.classList.add('star');
@@ -84,6 +98,7 @@ setInterval(createStar, 150);
 
 /* Main */
 (async () => {
+  await deleteExpiredKeys(); // Kiểm tra và xoá key cũ trước
   const key = genKey();
   document.getElementById('key').textContent = key;
   document.getElementById('copyBtn').style.display = 'inline-block';
