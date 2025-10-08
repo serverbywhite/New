@@ -14,7 +14,6 @@
     color: #fff; font-family: monospace;
   }
 
-  /* Avatar + tên + tick */
   #profile {
     display: flex; align-items: center; gap: 10px;
     margin-bottom: 1rem;
@@ -92,7 +91,6 @@
 <button id="copyBtn" style="display:none;">Copy Key</button>
 
 <script>
-/* ======== Key logic (MockAPI) ======== */
 const MOCKAPI = 'https://6887692e071f195ca980a354.mockapi.io/Key';
 const H24 = 24 * 60 * 60 * 1000;
 
@@ -134,7 +132,6 @@ async function deleteExpiredKeys() {
   } catch {}
 }
 
-/* ======== Galaxy 3D engine ======== */
 const g = document.getElementById('galaxy');
 const ctxG = g.getContext('2d');
 let W,H;
@@ -156,15 +153,14 @@ for (let i=0;i<starCount;i++) {
   });
 }
 
-let camRotY = 0;   // quay ngang
-let camRotX = 0;   // quay dọc
+let camRotY = 0;
+let camRotX = 0;
 let distance = 1500;
 let dragging = false;
 let lastX=0,lastY=0;
 let autoRotY = 0.002;
 let autoRotX = 0;
 
-/* ===== Điều khiển chuột & cảm ứng ===== */
 g.addEventListener('mousedown', e => {
   dragging = true;
   lastX = e.clientX;
@@ -196,14 +192,12 @@ g.addEventListener('touchmove', e=>{
 });
 g.addEventListener('touchend',()=>dragging=false);
 
-/* ===== Zoom ===== */
 window.addEventListener('wheel', e=>{
   distance += e.deltaY * 2;
   if(distance < 500) distance = 500;
   if(distance > 4000) distance = 4000;
 });
 
-/* ===== Render Galaxy ===== */
 function drawGalaxy3D(){
   ctxG.fillStyle='rgba(0,0,0,0.25)';
   ctxG.fillRect(0,0,W,H);
@@ -217,7 +211,6 @@ function drawGalaxy3D(){
   let sinX = Math.sin(camRotX), cosX = Math.cos(camRotX);
 
   for(let s of starsG){
-    // rotate around Y then X
     let x1 = s.x * cosY - s.z * sinY;
     let z1 = s.x * sinY + s.z * cosY;
     let y1 = s.y * cosX - z1 * sinX;
@@ -237,7 +230,6 @@ function drawGalaxy3D(){
 }
 drawGalaxy3D();
 
-/* ======== Sao rơi bật nảy ======== */
 const starCanvas = document.getElementById('stars');
 const ctx = starCanvas.getContext('2d');
 let stars = [];
@@ -276,7 +268,6 @@ function animateStars(){
 }
 animateStars();
 
-/* ======== Sao ☆ zig-zag riêng biệt ======== */
 let starsZ = [];
 const colors3 = ['#00ffff','#ff69b4','#fffacd','#adff2f','#ffa07a','#9370db'];
 
@@ -318,7 +309,6 @@ function animateStarsZ() {
 }
 animateStarsZ();
 
-/* ======== Main Key ======== */
 (async () => {
   await deleteExpiredKeys();
   const key = genKey();
@@ -328,7 +318,6 @@ animateStarsZ();
   await sendKeyRecord(key, ip);
 })();
 
-/* ======== Copy ======== */
 document.getElementById('copyBtn').onclick = async () => {
   const keyText = document.getElementById('key').textContent;
   await navigator.clipboard.writeText(keyText);
