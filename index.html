@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Random Key Galaxy</title>
+<title>Key Tool WhiteNN</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
   html, body {
     margin: 0; padding: 0;
@@ -12,22 +13,65 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     color: #fff; font-family: monospace;
   }
+
+  /* Avatar + tên + tick */
+  #profile {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 1rem;
+    z-index: 10;
+    background: rgba(0,0,0,0.4);
+    padding: 0.6rem 1.2rem;
+    border-radius: 12px;
+    box-shadow: 0 0 20px #00f5ff99;
+    animation: float 3s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  #profile .avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 2px solid #00f5ff;
+    box-shadow: 0 0 15px #00f5ff88;
+  }
+
+  #profile .verify {
+    width: 18px;
+    height: 18px;
+    margin-left: 0px;
+    vertical-align: middle;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #00f5ff88;
+  } 
+
+  #name {
+    font-size: 1.2rem;
+    display: flex; align-items: center; gap: 6px;
+    font-weight: bold;
+  }
+  #name .fa-badge-check {
+    color: #1da1f2;
+    font-size: 1.1rem;
+  }
+
   #key {
     font-size: 1.6rem; padding: 1rem 2rem; border: 2px solid #00f5ff;
     border-radius: 10px; background: rgba(0,0,0,0.5);
     box-shadow: 0 0 20px #00f5ff; word-break: break-all; z-index: 10;
   }
+
   button {
     margin-top: 1rem; padding: 0.6rem 1.2rem; border: none;
     border-radius: 8px; background: #00f5ff; color: #000; font-weight: bold;
     cursor: pointer; transition: 0.3s; z-index: 10;
   }
   button:hover { background: #00ffffaa; }
+
   #galaxy, #stars {
-    position: fixed;
-    top: 0; left: 0;
+    position: fixed; top: 0; left: 0;
     width: 100vw; height: 100vh;
-    z-index: 0;
   }
   #stars { z-index: 1; pointer-events: none; }
 </style>
@@ -35,14 +79,24 @@
 <body>
 <canvas id="galaxy"></canvas>
 <canvas id="stars"></canvas>
+
+<!-- Avatar + tên + tích xanh -->
+<div id="profile">
+  <img class="avatar" src="https://i.imgur.com/3Tz2QzV.png" alt="Avatar WhiteNN">
+  <div id="name">
+    WhiteNN
+    <img class="verify" src="https://i.imgur.com/Fcupuom.gif" alt="verified">
+  </div>
+</div>
+
+
+<!-- <i class="fa-solid fa-badge-check"></i> -->
+
 <div id="key">Đang tạo key...</div>
 <button id="copyBtn" style="display:none;">Copy Key</button>
 
-<!-- Load Three.js (chỉ 1 link chuẩn) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/three.min.js"></script>
-
 <script>
-/* ========== MockAPI logic ========== */
+/* ======== Key logic (MockAPI) ======== */
 const MOCKAPI = 'https://6887692e071f195ca980a354.mockapi.io/Key';
 const H24 = 24 * 60 * 60 * 1000;
 
@@ -54,20 +108,21 @@ function genKey(len = 32) {
 
 async function getIp() {
   try {
-    const r2 = await fetch('https://api.ipify.org?format=json');
-    const j = await r2.json();
-    return j.ip;
+    const res = await fetch('https://api.ipify.org?format=json');
+    return (await res.json()).ip;
   } catch {
     return 'unknown';
   }
 }
 
 async function sendKeyRecord(key, ip) {
-  return fetch(MOCKAPI, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ key, ip, createdAt: new Date().toISOString() })
-  });
+  try {
+    await fetch(MOCKAPI, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ key, ip, createdAt: new Date().toISOString() })
+    });
+  } catch {}
 }
 
 async function deleteExpiredKeys() {
@@ -78,78 +133,129 @@ async function deleteExpiredKeys() {
     for (const k of keys) {
       if (now - new Date(k.createdAt).getTime() > H24) {
         await fetch(`${MOCKAPI}/${k.id}`, { method: 'DELETE' });
-        console.log('Đã xoá key hết hạn:', k.key);
       }
     }
-  } catch (e) { console.warn('Không thể xoá key:', e); }
+  } catch {}
 }
 
-/* ========== Galaxy 3D ========== */
-const galaxyCanvas = document.getElementById('galaxy');
-const renderer = new THREE.WebGLRenderer({canvas: galaxyCanvas, antialias: true});
-renderer.setSize(window.innerWidth, window.innerHeight);
+/* ======== Galaxy 3D engine ======== */
+const g = document.getElementById('galaxy');
+const ctxG = g.getContext('2d');
+let W,H;
+function resizeG(){W=g.width=innerWidth;H=g.height=innerHeight;}
+resizeG();addEventListener('resize',resizeG);
 
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
-camera.position.z = 400;
+const starCount = 1500;
+let starsG = [];
 
-const geometry = new THREE.BufferGeometry();
-const count = 5000;
-const positions = new Float32Array(count * 3);
-const colors = new Float32Array(count * 3);
-
-for (let i = 0; i < count; i++) {
-  const r = Math.random() * 400 + 100;
-  const theta = Math.random() * 2 * Math.PI;
-  const phi = Math.random() * Math.PI;
-  positions[i*3] = r * Math.sin(phi) * Math.cos(theta);
-  positions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
-  positions[i*3+2] = r * Math.cos(phi);
-  const color = new THREE.Color(`hsl(${Math.random()*360}, 100%, 70%)`);
-  colors[i*3] = color.r;
-  colors[i*3+1] = color.g;
-  colors[i*3+2] = color.b;
+for (let i=0;i<starCount;i++) {
+  let r = Math.random()*900+100;
+  let theta = Math.random()*2*Math.PI;
+  let phi = Math.random()*Math.PI;
+  starsG.push({
+    x: r * Math.sin(phi)*Math.cos(theta),
+    y: r * Math.sin(phi)*Math.sin(theta),
+    z: r * Math.cos(phi),
+    color: `hsl(${Math.random()*360},100%,50%)`
+  });
 }
 
-geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-const material = new THREE.PointsMaterial({ size: 2, vertexColors: true, transparent: true });
-const points = new THREE.Points(geometry, material);
-scene.add(points);
+let camRotY = 0;   // quay ngang
+let camRotX = 0;   // quay dọc
+let distance = 1500;
+let dragging = false;
+let lastX=0,lastY=0;
+let autoRotY = 0.002;
+let autoRotX = 0;
 
-function animateGalaxy() {
-  requestAnimationFrame(animateGalaxy);
-  points.rotation.y += 0.0009;
-  points.rotation.x += 0.0004;
-  renderer.render(scene, camera);
-}
-animateGalaxy();
-
-window.addEventListener('resize', () => {
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+/* ===== Điều khiển chuột & cảm ứng ===== */
+g.addEventListener('mousedown', e => {
+  dragging = true;
+  lastX = e.clientX;
+  lastY = e.clientY;
+});
+window.addEventListener('mouseup', () => dragging=false);
+window.addEventListener('mousemove', e=>{
+  if(!dragging) return;
+  let dx = e.clientX - lastX;
+  let dy = e.clientY - lastY;
+  camRotY += dx * 0.005;
+  camRotX += dy * 0.005;
+  lastX = e.clientX; lastY = e.clientY;
 });
 
-/* ========== Sao "★" rơi bật nảy ========== */
+g.addEventListener('touchstart', e=>{
+  dragging=true;
+  lastX=e.touches[0].clientX;
+  lastY=e.touches[0].clientY;
+});
+g.addEventListener('touchmove', e=>{
+  if(!dragging) return;
+  let t=e.touches[0];
+  let dx=t.clientX-lastX;
+  let dy=t.clientY-lastY;
+  camRotY+=dx*0.005;
+  camRotX+=dy*0.005;
+  lastX=t.clientX;lastY=t.clientY;
+});
+g.addEventListener('touchend',()=>dragging=false);
+
+/* ===== Zoom ===== */
+window.addEventListener('wheel', e=>{
+  distance += e.deltaY * 2;
+  if(distance < 500) distance = 500;
+  if(distance > 4000) distance = 4000;
+});
+
+/* ===== Render Galaxy ===== */
+function drawGalaxy3D(){
+  ctxG.fillStyle='rgba(0,0,0,0.25)';
+  ctxG.fillRect(0,0,W,H);
+
+  if (!dragging) {
+    camRotY += autoRotY;
+    camRotX += autoRotX;
+  }
+
+  let sinY = Math.sin(camRotY), cosY = Math.cos(camRotY);
+  let sinX = Math.sin(camRotX), cosX = Math.cos(camRotX);
+
+  for(let s of starsG){
+    // rotate around Y then X
+    let x1 = s.x * cosY - s.z * sinY;
+    let z1 = s.x * sinY + s.z * cosY;
+    let y1 = s.y * cosX - z1 * sinX;
+    z1 = s.y * sinX + z1 * cosX + distance;
+
+    let fov = 400 / z1;
+    let px = x1 * fov + W/2;
+    let py = y1 * fov + H/2;
+
+    if(px>=0 && px<W && py>=0 && py<H){
+      ctxG.fillStyle = s.color;
+      let size = Math.max(0.5, 2 - z1/700);
+      ctxG.fillRect(px,py,size,size);
+    }
+  }
+  requestAnimationFrame(drawGalaxy3D);
+}
+drawGalaxy3D();
+
+/* ======== Sao rơi bật nảy ======== */
 const starCanvas = document.getElementById('stars');
 const ctx = starCanvas.getContext('2d');
 let stars = [];
 const colors2 = ['#00f5ff','#ff1493','#ffd700','#7fff00','#ff4500','#8a2be2'];
-let W,H;
-
-function resize2() {
-  W = starCanvas.width = window.innerWidth;
-  H = starCanvas.height = window.innerHeight;
-}
+let W2,H2;
+function resize2() { W2 = starCanvas.width = innerWidth; H2 = starCanvas.height = innerHeight; }
 window.addEventListener('resize', resize2);
 resize2();
 
 class Star {
   constructor() { this.reset(true); }
   reset(init=false) {
-    this.x = Math.random()*W;
-    this.y = init ? Math.random()*H : -20;
+    this.x = Math.random()*W2;
+    this.y = init ? Math.random()*H2 : -20;
     this.vx = (Math.random()-0.5)*2;
     this.vy = Math.random()*2+1;
     this.color = colors2[Math.floor(Math.random()*colors2.length)];
@@ -157,22 +263,66 @@ class Star {
   }
   update() {
     this.x += this.vx; this.y += this.vy; this.vy += 0.03;
-    if (this.x<=0||this.x>=W) this.vx*=-1;
-    if (this.y>=H-this.size){this.vy*=-0.8;this.y=H-this.size;if(Math.abs(this.vy)<0.5)this.reset();}
+    if (this.x<=0||this.x>=W2) this.vx*=-1;
+    if (this.y>=H2-this.size){this.vy*=-0.8;this.y=H2-this.size;if(Math.abs(this.vy)<0.5)this.reset();}
   }
   draw() {
-    ctx.save(); ctx.translate(this.x,this.y); ctx.fillStyle=this.color; ctx.font=`${this.size}px Arial`; ctx.fillText('★',0,0); ctx.restore();
+    ctx.save(); ctx.translate(this.x,this.y);
+    ctx.fillStyle=this.color; ctx.font=`${this.size}px Arial`; ctx.fillText('★',0,0);
+    ctx.restore();
   }
 }
 for(let i=0;i<250;i++) stars.push(new Star());
 function animateStars(){
-  ctx.clearRect(0,0,W,H);
+  ctx.clearRect(0,0,W2,H2);
   for(const s of stars){s.update();s.draw();}
   requestAnimationFrame(animateStars);
 }
 animateStars();
 
-/* ========== Main logic key ========== */
+/* ======== Sao ☆ zig-zag riêng biệt ======== */
+let starsZ = [];
+const colors3 = ['#00ffff','#ff69b4','#fffacd','#adff2f','#ffa07a','#9370db'];
+
+class StarZ {
+  constructor() { this.reset(true); }
+  reset(init=false) {
+    this.x = Math.random()*W2;
+    this.y = init ? Math.random()*H2 : -20;
+    this.vx = (Math.random()-0.5)*0.8;
+    this.vy = Math.random()*2+0.8;
+    this.color = colors3[Math.floor(Math.random()*colors3.length)];
+    this.size = Math.random()*12+6;
+    this.wave = Math.random()*Math.PI*2;
+    this.amp = Math.random()*30+10;
+    this.freq = Math.random()*0.05+0.02;
+    this.opacity = Math.random()*0.8+0.2;
+  }
+  update() {
+    this.wave += this.freq;
+    this.x += Math.sin(this.wave)*1.2;
+    this.y += this.vy;
+    this.vy += 0.01;
+    if (this.y > H2 + 40) this.reset();
+  }
+  draw() {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.globalAlpha = this.opacity;
+    ctx.fillStyle = this.color;
+    ctx.font = `${this.size}px Arial`;
+    ctx.fillText('☆', 0, 0);
+    ctx.restore();
+  }
+}
+for (let i=0;i<150;i++) starsZ.push(new StarZ());
+function animateStarsZ() {
+  for (const s of starsZ) { s.update(); s.draw(); }
+  requestAnimationFrame(animateStarsZ);
+}
+animateStarsZ();
+
+/* ======== Main Key ======== */
 (async () => {
   await deleteExpiredKeys();
   const key = genKey();
@@ -182,7 +332,7 @@ animateStars();
   await sendKeyRecord(key, ip);
 })();
 
-/* Copy */
+/* ======== Copy ======== */
 document.getElementById('copyBtn').onclick = async () => {
   const keyText = document.getElementById('key').textContent;
   await navigator.clipboard.writeText(keyText);
